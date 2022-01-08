@@ -1,0 +1,247 @@
+import os
+import pandas as pd
+
+import plotly.express as px
+import plotly.graph_objects as go
+import plotly.io as pio
+import streamlit as st
+from typing import List, Tuple
+
+pio.templates.default = "presentation"
+st.set_page_config(layout="wide")
+
+data_root = os.path.normpath(os.getcwd() + os.sep + "data")
+
+
+def get_prices_data(data_root: str) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Fetch csv's from the preprocessed data folder"""
+    prices_hourly_df = pd.read_csv(
+        f"{data_root}/processed/elspot_hourly.csv", index_col="datetime", parse_dates=["datetime"]
+    )
+    prices_daily_df = pd.read_csv(
+        f"{data_root}/processed/elspot_daily.csv", index_col="datetime", parse_dates=["datetime"]
+    )
+    prices_monthly_df = pd.read_csv(
+        f"{data_root}/processed/elspot_monthly.csv", index_col="datetime", parse_dates=["datetime"]
+    )
+    return prices_hourly_df, prices_daily_df, prices_monthly_df
+
+
+prices_hourly_df, prices_daily_df, prices_monthly_df = get_prices_data(data_root=data_root)
+
+
+def run_app():
+
+    areas_list: List[str] = [
+        "SE1",
+        "SE2",
+        "SE3",
+        "SE4",
+        "DK1",
+        "SYS",
+        "FI",
+        "DK2",
+        "Oslo",
+        "Kr.sand",
+        "Bergen",
+        "Molde",
+        "Tr.heim",
+        "TromsÃ¸",
+    ]
+    years_list: List[int] = [2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020]
+    months_list: List[str] = [
+        "January",
+        "February",
+        "March",
+        "April",
+        "May",
+        "June",
+        "July",
+        "August",
+        "September",
+        "October",
+        "November",
+        "December",
+    ]
+
+    def get_prices_barplot(daily_df: pd.DataFrame, year: int, locations: List[str]):
+        fig = px.bar(daily_df.loc[str(year)].reset_index(), x="datetime", y=locations)
+
+        fig.update_xaxes(
+            rangeslider_visible=True,
+            rangeselector=dict(
+                buttons=list(
+                    [
+                        dict(count=1, label="1m", step="month", stepmode="backward"),
+                        dict(count=3, label="3m", step="month", stepmode="backward"),
+                        dict(count=6, label="6m", step="month", stepmode="backward"),
+                        dict(count=9, label="9m", step="month", stepmode="backward"),
+                        dict(step="all"),
+                    ]
+                )
+            ),
+        )
+        fig.update_layout(
+            title_text=f"<b><i>Seasonal representations - {year}</b></i>",
+            title_x=0.5,
+            height=600,
+            legend=dict(
+                orientation="h",
+                xanchor="center",
+                x=0.5,
+                y=0.01,
+                font=dict(
+                    family="Courier New",
+                    size=12,
+                ),
+            ),
+        )
+
+        return fig
+
+    def get_prices_funnelplot(monthly_df: pd.DataFrame, year: int):
+        fig = go.Figure()
+        temp_df = monthly_df.loc[monthly_df.loc[str(year)].sum(axis=1).sort_values(ascending=False).index].copy(
+            deep=True
+        )
+        for name in temp_df.columns.tolist():
+            fig.add_trace(
+                go.Funnel(
+                    name=name,
+                    y=temp_df.loc[str(year)][name].index.month_name().tolist(),
+                    x=temp_df.loc[str(year)][name].to_numpy().astype(int),
+                    textinfo="value",
+                )
+            )
+        temp_df = None
+        fig.update_layout(
+            title_text=f"<b><i>Monthly Averages of NordPool Prices - {year}</b></i>",
+            title_x=0.5,
+            height=600,
+            legend=dict(
+                orientation="h",
+                xanchor="center",
+                x=0.5,
+                font=dict(
+                    family="Courier New",
+                    size=12,
+                ),
+            ),
+        )
+        return fig
+
+    def get_prices_boxplot(daily_df: pd.DataFrame, year: int, location: str):
+        fig = go.Figure()
+        temp_df = daily_df.loc[str(year)][location]
+        month_names = months_list
+
+        for month in month_names:
+            fig.add_trace(
+                go.Box(
+                    y=temp_df.loc[temp_df.index.month_name() == month].to_numpy(),
+                    name=month,
+                    boxpoints="all",
+                    showlegend=False,
+                )
+            )
+        temp_df = None
+        fig.update_layout(
+            title_text=f"<b><i>Prices Deviations for {location} in {year}</b></i>",
+            title_x=0.5,
+            height=600,
+        )
+        fig.update_xaxes(tickfont_size=14, tickfont_family="Droid Sans Mono", showgrid=False)
+        fig.update_yaxes(showgrid=False)
+        return fig
+
+    def get_prices_difference(daily_df: pd.DataFrame, year: int, area_from: str, area_to: str):
+
+        area1 = daily_df.loc[str(year)][area_from]
+        area2 = daily_df.loc[str(year)][area_to]
+        daily_diff = pd.DataFrame((area1 - area2).groupby("datetime").mean(), columns=["price_difference"])
+
+        fig = go.Figure([go.Bar(x=daily_diff.index, y=daily_diff["price_difference"])])
+        fig.update_xaxes(
+            rangeslider_visible=True,
+            rangeselector=dict(
+                buttons=list(
+                    [
+                        dict(count=1, label="1m", step="month", stepmode="backward"),
+                        dict(count=3, label="3m", step="month", stepmode="backward"),
+                        dict(count=6, label="6m", step="month", stepmode="backward"),
+                        dict(count=9, label="9m", step="month", stepmode="backward"),
+                        dict(step="all"),
+                    ]
+                )
+            ),
+        )
+        fig.update_layout(
+            title_text=f"<b><i>Price Differences between {area_from} and {area_to} during {year}</b></i>",
+            title_x=0.5,
+            height=600,
+        )
+        return fig
+
+    st.markdown(
+        "<h1 style='text-align: center; color: #00CC96;'>Climate Electricity Interactions!</h1>",
+        unsafe_allow_html=True,
+    )
+    year_funnelplot = st.select_slider("Choose an year", options=years_list, value=2020, key="funnel_prices")
+    st.plotly_chart(
+        get_prices_funnelplot(monthly_df=prices_monthly_df, year=year_funnelplot), use_container_width=True
+    )
+
+    year_boxplot = st.select_slider("Choose an year", options=years_list, value=2020, key="box_prices")
+    location_boxplot = st.selectbox(
+        "Choose a Nord area",
+        areas_list,
+    )
+    st.plotly_chart(
+        get_prices_boxplot(daily_df=prices_daily_df, year=year_boxplot, location=location_boxplot),
+        use_container_width=True,
+    )
+
+    year_barplot = st.select_slider("Choose an year", options=years_list, value=2020, key="bar_prices")
+    location_boxplot = st.multiselect(
+        "Nord areas of choice",
+        options=areas_list,
+        default=["SE1", "SE2", "SE3"],
+    )
+    st.plotly_chart(
+        get_prices_barplot(daily_df=prices_daily_df, year=year_barplot, locations=location_boxplot),
+        use_container_width=True,
+    )
+
+    year_price_diff = st.select_slider("Choose an year", options=years_list, value=2020, key="diff_prices")
+    area_from, area_to = st.columns(2)
+    with area_from:
+        area_from_name = st.selectbox(
+            "Choose a Nord area",
+            areas_list,
+            index=0,
+            key="diff_prices_from",
+        )
+    with area_to:
+        area_to_name = st.selectbox(
+            "Choose a Nord area",
+            areas_list,
+            index=8,
+            key="diff_prices_to",
+        )
+    if area_from_name is not area_to_name:
+        st.plotly_chart(
+            get_prices_difference(
+                daily_df=prices_daily_df, year=year_price_diff, area_from=area_from_name, area_to=area_to_name
+            ),
+            use_container_width=True,
+        )
+    else:
+        st.error("Please select different areas for comparison")
+
+
+def main():
+    run_app()
+
+
+if __name__ == "__main__":
+    main()
