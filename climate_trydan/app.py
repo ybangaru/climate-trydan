@@ -1,5 +1,7 @@
+from cgi import test
 from operator import index
 import os
+from re import X
 import pandas as pd
 import numpy as np
 
@@ -15,6 +17,7 @@ from datetime import datetime as dt
 from datetime import timedelta
 from prophet import Prophet
 from sklearn.metrics import *
+from prophet.plot import plot_plotly, plot_components_plotly
 
 
 pio.templates.default = "presentation"
@@ -53,7 +56,7 @@ def get_denmark_climate_data(data_root: str) -> pd.DataFrame:
 denmark_climate_df = get_denmark_climate_data(data_root=data_root)
 
 
-def run_app():
+def run_app_nordpool():
 
     areas_list: List[str] = [
         "SE1",
@@ -205,52 +208,6 @@ def run_app():
         )
         return fig
 
-    def get_climate_heat_map(climate_df: pd.DataFrame):
-        corr = climate_df.corr()
-        fig = plt.figure(figsize=(11, 8))
-        sns.heatmap(corr, cmap="Blues", annot=True)
-        return fig
-
-    def prophet_regressor(df):
-
-        start_time = max(min(df.index), dt.fromisoformat("2017-01-01"))
-        end_time = min(max(df.index), dt.fromisoformat("2019-12-31 23:00:00"))
-        num_days_for_test = 30
-
-        df_app = df.loc[start_time:end_time]
-        df_app["ds"] = df_app.index
-        df_app.rename({"DK_price_day_ahead": "y"}, axis=1, inplace=True)
-        test_start_time = end_time - timedelta(days=num_days_for_test)
-        df_train = df_app.loc[df_app["ds"] < test_start_time]
-        df_test = df_app.loc[df_app["ds"] >= test_start_time]
-
-        m = Prophet(yearly_seasonality=True, weekly_seasonality=True, daily_seasonality=True)
-        for c in df_app.columns.to_list():
-            if c not in ["ds", "y"]:
-                m.add_regressor(c)
-        m.fit(df_train)
-
-        forecast = m.predict(df_test.drop(columns="y"))
-
-        evaluation_df = pd.DataFrame({"y_pred": forecast["yhat"].round(2).tolist(), "y_true": df_test["y"].tolist()})
-        print("MAE: %.3f" % mean_absolute_error(evaluation_df["y_true"], evaluation_df["y_pred"]))
-
-        forecast.index = forecast["ds"]
-
-        fig3 = m.plot(forecast, uncertainty=True, xlabel="Date", ylabel="price_day_ahead")
-        ax = fig3.gca()
-        ax.set_xlim(pd.to_datetime([test_start_time - timedelta(days=num_days_for_test), end_time]))
-        st.pyplot(fig3)
-
-        ax = forecast.plot(x="ds", y="yhat", legend=True, label="predictions", figsize=(12, 8))
-        df_test.plot(
-            x="ds", y="y", legend=True, label="True Test Data", ax=ax, xlabel="Date", ylabel="price_day_ahead"
-        )
-        # st.pyplot(ax)
-
-        fig2 = m.plot_components(forecast)
-        st.pyplot(fig2)
-
     st.markdown(
         "<h1 style='text-align: center; color: #00CC96;'>Climate Electricity Interactions!</h1>",
         unsafe_allow_html=True,
@@ -307,6 +264,97 @@ def run_app():
     else:
         st.error("Please select different areas for comparison")
 
+
+def run_app_opsd():
+    def get_climate_heat_map(climate_df: pd.DataFrame):
+        corr = climate_df.corr()
+        fig = plt.figure()  # figsize=(11, 8)
+        sns.heatmap(corr, cmap="Blues", annot=True)
+        return fig
+
+    def prophet_regressor(df: pd.DataFrame):
+
+        st.header(f"Time series predictions!")
+        list_of_yhats = ["Load", "Price"]
+        option_yhat = st.selectbox("Which variable do you want to predict?", list_of_yhats, index=1)
+
+        if option_yhat == "Load":
+            pred_var_label = "DK_load_actual_entsoe_transparency"
+            pred_var_plot_label = "Load (Watts)"
+        elif option_yhat == "Price":
+            pred_var_label = "DK_price_day_ahead"
+            pred_var_plot_label = "Price Day Ahead (Euros)"
+
+        start_time_value = max(min(df.index), dt.fromisoformat("2018-01-01"))
+        end_time_value = min(max(df.index), dt.fromisoformat("2019-12-31 23:00:00"))
+
+        start_time = st.date_input("Start date", start_time_value)
+        end_time = st.date_input("End date", end_time_value)
+
+        start_time = max(min(df.index), start_time)
+        end_time = min(max(df.index), end_time)
+
+        num_days_for_test = st.number_input("Predict for how many days?", value=14)
+
+        df_app = df.loc[start_time:end_time]
+        df_app["ds"] = df_app.index
+        df_app.rename({pred_var_label: "y"}, axis=1, inplace=True)
+        test_start_time = end_time - timedelta(days=num_days_for_test)
+
+        df_train = df_app.loc[df_app["ds"] < np.datetime64(test_start_time)]
+        df_test = df_app.loc[df_app["ds"] >= np.datetime64(test_start_time)]
+
+        m = Prophet(yearly_seasonality=True, weekly_seasonality=True, daily_seasonality=True)
+        for c in df_app.columns.to_list():
+            if c not in ["ds", "y"]:
+                m.add_regressor(c)
+        m.fit(df_train)
+
+        forecast = m.predict(df_test.drop(columns="y"))
+
+        forecast.index = forecast["ds"]
+
+        fig3 = m.plot(forecast, uncertainty=True, xlabel="Date", ylabel=pred_var_plot_label)
+        ax = fig3.gca()
+        ax.set_xlim(pd.to_datetime([test_start_time - timedelta(days=num_days_for_test), end_time]))
+        st.subheader(f"Forecasted values for {num_days_for_test} days")
+        st.pyplot(fig3)
+
+        st.subheader("Model evaluation!")
+        evaluation_df = pd.DataFrame({"y_pred": forecast["yhat"].round(2).tolist(), "y_true": df_test["y"].tolist()})
+        st.write("MAE: %.3f" % mean_absolute_error(evaluation_df["y_true"], evaluation_df["y_pred"]))
+
+        # st.plotly_chart(plot_plotly(m, forecast))
+        st.write(pd.merge(df_test[["y"]].head(10), forecast[["yhat"]].head(10), left_index=True, right_index=True))
+
+        y_true = df_test["y"].values
+        y_pred = forecast["yhat"].values
+
+        fig1 = plt.figure(figsize=(10, 6))
+        plt.plot(df_test.index, y_true, label="Actual")
+        plt.plot(df_test.index, y_pred, label="Predicted")
+        plt.xticks(rotation=90)
+        plt.legend()
+        plt.xlabel("Timestamp")
+        plt.ylabel(pred_var_plot_label)
+
+        # fig4, ax = plt.subplots()
+        # ax = forecast.plot(x="ds", y="yhat", legend=True, label="predictions", figsize=(12, 8))
+        # fig4 = df_test.plot(
+        #     x="ds", y="y", legend=True, label="True Test Data", ax=ax, xlabel="Date", ylabel="price_day_ahead"
+        # )
+        st.subheader(f"Actual vs Predicted {pred_var_plot_label}!")
+        st.pyplot(fig1)
+
+        fig2 = m.plot_components(forecast)
+        st.subheader("Trend components")
+        st.pyplot(fig2)
+
+    st.markdown(
+        "<h1 style='text-align: center; color: #00CC96;'>Modelling and visulalizations!</h1>",
+        unsafe_allow_html=True,
+    )
+
     check_off = ["<select>"]
 
     check_on = st.selectbox("Check out the climate data!", check_off + ["Denmark"], index=0)
@@ -320,6 +368,7 @@ def run_app():
 
     list_of_models = ["Prophet", "Nothing Yet"]
 
+    st.subheader(f"Time series predictions!")
     option = st.selectbox("Which algorithm do you like to run?", check_off + list_of_models)
 
     if option == "Prophet":
@@ -329,7 +378,36 @@ def run_app():
 
 
 def main():
-    run_app()
+
+    st.markdown(
+        """
+        <style>
+        [data-testid="stSidebar"][aria-expanded="true"] > div:first-child {
+            width: 230px;
+        }
+        [data-testid="stSidebar"][aria-expanded="false"] > div:first-child {
+            width: 500px;
+            margin-left: -230px;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    mode = st.sidebar.selectbox(
+        "",
+        [
+            "NordPool!",
+            "OpenPowerSystems!",
+        ],
+    )
+    if mode == "NordPool!":
+        # st.title('Live Funding Rates - Binance!')
+        run_app_nordpool()
+
+    elif mode == "OpenPowerSystems!":
+        # st.title('FTX Metrics')
+        run_app_opsd()
 
 
 if __name__ == "__main__":
