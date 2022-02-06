@@ -268,7 +268,7 @@ def run_app_nordpool():
 def run_app_opsd():
     def get_climate_heat_map(climate_df: pd.DataFrame):
         corr = climate_df.corr()
-        fig = plt.figure()  # figsize=(11, 8)
+        fig = plt.figure()
         sns.heatmap(corr, cmap="Blues", annot=True)
         return fig
 
@@ -324,7 +324,6 @@ def run_app_opsd():
         evaluation_df = pd.DataFrame({"y_pred": forecast["yhat"].round(2).tolist(), "y_true": df_test["y"].tolist()})
         st.write("MAE: %.3f" % mean_absolute_error(evaluation_df["y_true"], evaluation_df["y_pred"]))
 
-        # st.plotly_chart(plot_plotly(m, forecast))
         st.write(pd.merge(df_test[["y"]].head(10), forecast[["yhat"]].head(10), left_index=True, right_index=True))
 
         y_true = df_test["y"].values
@@ -338,11 +337,6 @@ def run_app_opsd():
         plt.xlabel("Timestamp")
         plt.ylabel(pred_var_plot_label)
 
-        # fig4, ax = plt.subplots()
-        # ax = forecast.plot(x="ds", y="yhat", legend=True, label="predictions", figsize=(12, 8))
-        # fig4 = df_test.plot(
-        #     x="ds", y="y", legend=True, label="True Test Data", ax=ax, xlabel="Date", ylabel="price_day_ahead"
-        # )
         st.subheader(f"Actual vs Predicted {pred_var_plot_label}!")
         st.pyplot(fig1)
 
@@ -402,11 +396,9 @@ def main():
         ],
     )
     if mode == "NordPool!":
-        # st.title('Live Funding Rates - Binance!')
         run_app_nordpool()
 
     elif mode == "OpenPowerSystems!":
-        # st.title('FTX Metrics')
         run_app_opsd()
 
 
