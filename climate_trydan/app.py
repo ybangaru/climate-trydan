@@ -1,11 +1,21 @@
+from operator import index
 import os
 import pandas as pd
+import numpy as np
 
+import matplotlib.pyplot as plt
 import plotly.express as px
 import plotly.graph_objects as go
 import plotly.io as pio
+from scipy import stats
+import seaborn as sns
 import streamlit as st
 from typing import List, Tuple
+from datetime import datetime as dt
+from datetime import timedelta
+from prophet import Prophet
+from sklearn.metrics import *
+
 
 pio.templates.default = "presentation"
 st.set_page_config(layout="wide")
@@ -28,6 +38,19 @@ def get_prices_data(data_root: str) -> Tuple[pd.DataFrame, pd.DataFrame, pd.Data
 
 
 prices_hourly_df, prices_daily_df, prices_monthly_df = get_prices_data(data_root=data_root)
+
+def get_denmark_climate_data(data_root: str) -> pd.DataFrame:
+    """Fetch processed data of Denmark climate data"""
+    denmark_climate_df = pd.read_csv(
+        f'{data_root}/processed/denmark_market_data.csv'
+    )
+    denmark_climate_df = denmark_climate_df.dropna()
+    denmark_climate_df["utc_timestamp"] = pd.to_datetime(denmark_climate_df["utc_timestamp"])
+    denmark_climate_df["utc_timestamp"] = denmark_climate_df["utc_timestamp"].dt.tz_convert(None)
+    denmark_climate_df = denmark_climate_df.set_index('utc_timestamp', drop = True)
+    return denmark_climate_df
+
+denmark_climate_df = get_denmark_climate_data(data_root=data_root)
 
 
 def run_app():
@@ -182,16 +205,60 @@ def run_app():
         )
         return fig
 
+    def get_climate_heat_map(climate_df: pd.DataFrame):
+        corr = climate_df.corr()
+        fig = plt.figure(figsize=(11,8))
+        sns.heatmap(corr, cmap = "Blues",annot=True)
+        return fig
+
+    def prophet_regressor(df):
+
+        start_time = max(min(df.index), dt.fromisoformat("2017-01-01"))
+        end_time = min(max(df.index), dt.fromisoformat("2019-12-31 23:00:00"))
+        num_days_for_test = 30
+
+        df_app = df.loc[start_time:end_time]
+        df_app["ds"] = df_app.index
+        df_app.rename({"DK_price_day_ahead": "y"}, axis = 1, inplace = True)\
+
+        test_start_time = end_time - timedelta(days=num_days_for_test)
+        df_train = df_app.loc[df_app["ds"]<test_start_time]
+        df_test  = df_app.loc[df_app["ds"]>=test_start_time]
+
+        m = Prophet(yearly_seasonality = True, weekly_seasonality = True, daily_seasonality = True)
+        for c in df_app.columns.to_list():
+            if c not in ["ds", "y"]: m.add_regressor(c)
+        m.fit(df_train)
+
+        forecast = m.predict(df_test.drop(columns="y"))
+
+        evaluation_df = pd.DataFrame({'y_pred':forecast['yhat'].round(2).tolist(), 'y_true':df_test['y'].tolist()})
+        print('MAE: %.3f' % mean_absolute_error(evaluation_df['y_true'], evaluation_df['y_pred']))
+
+        forecast.index = forecast["ds"]
+
+        fig3 = m.plot(forecast, uncertainty = True, xlabel = "Date", ylabel = "price_day_ahead")
+        ax = fig3.gca()
+        ax.set_xlim(pd.to_datetime([test_start_time - timedelta(days=num_days_for_test), end_time]))
+        st.pyplot(fig3)
+
+        ax=forecast.plot(x='ds',y='yhat',legend=True,label='predictions',figsize=(12,8))
+        df_test.plot(x='ds',y='y',legend=True,label='True Test Data',ax=ax, xlabel = "Date", ylabel = "price_day_ahead")
+        # st.pyplot(ax)
+
+        fig2 = m.plot_components(forecast)
+        st.pyplot(fig2)
+
     st.markdown(
         "<h1 style='text-align: center; color: #00CC96;'>Climate Electricity Interactions!</h1>",
         unsafe_allow_html=True,
     )
-    year_funnelplot = st.select_slider("Choose an year", options=years_list, value=2020, key="funnel_prices")
+    year_funnelplot = st.selectbox("Choose an year", options=years_list, index=7, key="funnel_prices")
     st.plotly_chart(
         get_prices_funnelplot(monthly_df=prices_monthly_df, year=year_funnelplot), use_container_width=True
     )
 
-    year_boxplot = st.select_slider("Choose an year", options=years_list, value=2020, key="box_prices")
+    year_boxplot = st.selectbox("Choose an year", options=years_list, index=7, key="box_prices")
     location_boxplot = st.selectbox(
         "Choose a Nord area",
         areas_list,
@@ -201,7 +268,7 @@ def run_app():
         use_container_width=True,
     )
 
-    year_barplot = st.select_slider("Choose an year", options=years_list, value=2020, key="bar_prices")
+    year_barplot = st.selectbox("Choose an year", options=years_list, index=7, key="bar_prices")
     location_boxplot = st.multiselect(
         "Nord areas of choice",
         options=areas_list,
@@ -212,7 +279,7 @@ def run_app():
         use_container_width=True,
     )
 
-    year_price_diff = st.select_slider("Choose an year", options=years_list, value=2020, key="diff_prices")
+    year_price_diff = st.selectbox("Choose an year", options=years_list, index=7, key="diff_prices")
     area_from, area_to = st.columns(2)
     with area_from:
         area_from_name = st.selectbox(
@@ -238,6 +305,28 @@ def run_app():
     else:
         st.error("Please select different areas for comparison")
 
+
+    check_off = ['<select>']
+    
+    check_on = st.selectbox('Check out the climate data!', check_off+['Denmark'], index=0)
+
+    if check_on!='<select>':
+        st.write(denmark_climate_df)
+
+        climate_df = denmark_climate_df[(np.abs(stats.zscore(denmark_climate_df)) < 3).all(axis=1)]
+        st.subheader(f"Denmark Climate variables heat map!")
+        st.pyplot(get_climate_heat_map(climate_df=climate_df))
+
+
+    list_of_models = ["Prophet", "Nothing Yet"]
+
+    option = st.selectbox('Which algorithm do you like to run?',
+            check_off+list_of_models)
+
+    if option =="Prophet":
+        prophet_regressor(df=climate_df)
+    elif option=="Nothing Yet":
+        st.error('Error: No model exists')
 
 def main():
     run_app()
