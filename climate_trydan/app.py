@@ -39,16 +39,16 @@ def get_prices_data(data_root: str) -> Tuple[pd.DataFrame, pd.DataFrame, pd.Data
 
 prices_hourly_df, prices_daily_df, prices_monthly_df = get_prices_data(data_root=data_root)
 
+
 def get_denmark_climate_data(data_root: str) -> pd.DataFrame:
     """Fetch processed data of Denmark climate data"""
-    denmark_climate_df = pd.read_csv(
-        f'{data_root}/processed/denmark_market_data.csv'
-    )
+    denmark_climate_df = pd.read_csv(f"{data_root}/processed/denmark_market_data.csv")
     denmark_climate_df = denmark_climate_df.dropna()
     denmark_climate_df["utc_timestamp"] = pd.to_datetime(denmark_climate_df["utc_timestamp"])
     denmark_climate_df["utc_timestamp"] = denmark_climate_df["utc_timestamp"].dt.tz_convert(None)
-    denmark_climate_df = denmark_climate_df.set_index('utc_timestamp', drop = True)
+    denmark_climate_df = denmark_climate_df.set_index("utc_timestamp", drop=True)
     return denmark_climate_df
+
 
 denmark_climate_df = get_denmark_climate_data(data_root=data_root)
 
@@ -207,8 +207,8 @@ def run_app():
 
     def get_climate_heat_map(climate_df: pd.DataFrame):
         corr = climate_df.corr()
-        fig = plt.figure(figsize=(11,8))
-        sns.heatmap(corr, cmap = "Blues",annot=True)
+        fig = plt.figure(figsize=(11, 8))
+        sns.heatmap(corr, cmap="Blues", annot=True)
         return fig
 
     def prophet_regressor(df):
@@ -219,31 +219,33 @@ def run_app():
 
         df_app = df.loc[start_time:end_time]
         df_app["ds"] = df_app.index
-        df_app.rename({"DK_price_day_ahead": "y"}, axis = 1, inplace = True)\
-
+        df_app.rename({"DK_price_day_ahead": "y"}, axis=1, inplace=True)
         test_start_time = end_time - timedelta(days=num_days_for_test)
-        df_train = df_app.loc[df_app["ds"]<test_start_time]
-        df_test  = df_app.loc[df_app["ds"]>=test_start_time]
+        df_train = df_app.loc[df_app["ds"] < test_start_time]
+        df_test = df_app.loc[df_app["ds"] >= test_start_time]
 
-        m = Prophet(yearly_seasonality = True, weekly_seasonality = True, daily_seasonality = True)
+        m = Prophet(yearly_seasonality=True, weekly_seasonality=True, daily_seasonality=True)
         for c in df_app.columns.to_list():
-            if c not in ["ds", "y"]: m.add_regressor(c)
+            if c not in ["ds", "y"]:
+                m.add_regressor(c)
         m.fit(df_train)
 
         forecast = m.predict(df_test.drop(columns="y"))
 
-        evaluation_df = pd.DataFrame({'y_pred':forecast['yhat'].round(2).tolist(), 'y_true':df_test['y'].tolist()})
-        print('MAE: %.3f' % mean_absolute_error(evaluation_df['y_true'], evaluation_df['y_pred']))
+        evaluation_df = pd.DataFrame({"y_pred": forecast["yhat"].round(2).tolist(), "y_true": df_test["y"].tolist()})
+        print("MAE: %.3f" % mean_absolute_error(evaluation_df["y_true"], evaluation_df["y_pred"]))
 
         forecast.index = forecast["ds"]
 
-        fig3 = m.plot(forecast, uncertainty = True, xlabel = "Date", ylabel = "price_day_ahead")
+        fig3 = m.plot(forecast, uncertainty=True, xlabel="Date", ylabel="price_day_ahead")
         ax = fig3.gca()
         ax.set_xlim(pd.to_datetime([test_start_time - timedelta(days=num_days_for_test), end_time]))
         st.pyplot(fig3)
 
-        ax=forecast.plot(x='ds',y='yhat',legend=True,label='predictions',figsize=(12,8))
-        df_test.plot(x='ds',y='y',legend=True,label='True Test Data',ax=ax, xlabel = "Date", ylabel = "price_day_ahead")
+        ax = forecast.plot(x="ds", y="yhat", legend=True, label="predictions", figsize=(12, 8))
+        df_test.plot(
+            x="ds", y="y", legend=True, label="True Test Data", ax=ax, xlabel="Date", ylabel="price_day_ahead"
+        )
         # st.pyplot(ax)
 
         fig2 = m.plot_components(forecast)
@@ -305,28 +307,26 @@ def run_app():
     else:
         st.error("Please select different areas for comparison")
 
+    check_off = ["<select>"]
 
-    check_off = ['<select>']
-    
-    check_on = st.selectbox('Check out the climate data!', check_off+['Denmark'], index=0)
+    check_on = st.selectbox("Check out the climate data!", check_off + ["Denmark"], index=0)
 
-    if check_on!='<select>':
+    if check_on != "<select>":
         st.write(denmark_climate_df)
 
         climate_df = denmark_climate_df[(np.abs(stats.zscore(denmark_climate_df)) < 3).all(axis=1)]
         st.subheader(f"Denmark Climate variables heat map!")
         st.pyplot(get_climate_heat_map(climate_df=climate_df))
 
-
     list_of_models = ["Prophet", "Nothing Yet"]
 
-    option = st.selectbox('Which algorithm do you like to run?',
-            check_off+list_of_models)
+    option = st.selectbox("Which algorithm do you like to run?", check_off + list_of_models)
 
-    if option =="Prophet":
+    if option == "Prophet":
         prophet_regressor(df=climate_df)
-    elif option=="Nothing Yet":
-        st.error('Error: No model exists')
+    elif option == "Nothing Yet":
+        st.error("Error: No model exists")
+
 
 def main():
     run_app()
