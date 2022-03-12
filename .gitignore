@@ -1,0 +1,5 @@
+.venv
+.mypy_cache
+.DS_Store
+climate_trydan/data/.DS_Store
+climate_trydan/.DS_Store
