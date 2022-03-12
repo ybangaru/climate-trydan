@@ -1,23 +1,19 @@
-from cgi import test
-from operator import index
 import os
-from re import X
-import pandas as pd
+import pandas as pd  # type: ignore
 import numpy as np
 
-import matplotlib.pyplot as plt
-import plotly.express as px
-import plotly.graph_objects as go
-import plotly.io as pio
-from scipy import stats
-import seaborn as sns
+import matplotlib.pyplot as plt  # type: ignore
+import plotly.express as px  # type: ignore
+import plotly.graph_objects as go  # type: ignore
+import plotly.io as pio  # type: ignore
+from scipy import stats  # type: ignore
+import seaborn as sns  # type: ignore
 import streamlit as st
 from typing import List, Tuple
 from datetime import datetime as dt
 from datetime import timedelta
-from prophet import Prophet
-from sklearn.metrics import *
-from prophet.plot import plot_plotly, plot_components_plotly
+from prophet import Prophet  # type: ignore
+from sklearn.metrics import mean_absolute_error  # type: ignore
 
 
 pio.templates.default = "presentation"
@@ -274,7 +270,7 @@ def run_app_opsd():
 
     def prophet_regressor(df: pd.DataFrame):
 
-        st.header(f"Time series predictions!")
+        st.header("Time series predictions!")
         list_of_yhats = ["Load", "Price"]
         option_yhat = st.selectbox("Which variable do you want to predict?", list_of_yhats, index=1)
 
@@ -357,12 +353,12 @@ def run_app_opsd():
         st.write(denmark_climate_df)
 
         climate_df = denmark_climate_df[(np.abs(stats.zscore(denmark_climate_df)) < 3).all(axis=1)]
-        st.subheader(f"Denmark Climate variables heat map!")
+        st.subheader("Denmark Climate variables heat map!")
         st.pyplot(get_climate_heat_map(climate_df=climate_df))
 
     list_of_models = ["Prophet", "Nothing Yet"]
 
-    st.subheader(f"Time series predictions!")
+    st.subheader("Time series predictions!")
     option = st.selectbox("Which algorithm do you like to run?", check_off + list_of_models)
 
     if option == "Prophet":
