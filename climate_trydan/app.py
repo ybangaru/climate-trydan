@@ -12,14 +12,14 @@ import streamlit as st
 from typing import List, Tuple
 from datetime import datetime as dt
 from datetime import timedelta
-from prophet import Prophet  # type: ignore
+from fbprophet import Prophet  # type: ignore
 from sklearn.metrics import mean_absolute_error  # type: ignore
 
 
 pio.templates.default = "presentation"
 st.set_page_config(layout="wide")
 
-data_root = os.path.normpath(os.getcwd() + os.sep + "data")
+data_root = "climate_trydan/data"
 
 
 def get_prices_data(data_root: str) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
